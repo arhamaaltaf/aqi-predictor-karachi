@@ -1,0 +1,77 @@
+name: Hourly Data Collection
+
+on:
+  schedule:
+    # Run every hour at the top of the hour
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  collect-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Log workflow start
+      run: |
+        echo "🚀 Starting hourly data collection"
+        echo "⏰ Workflow triggered at: $(date -u) UTC"
+        echo "📍 Local time: $(date)"
+    
+    - name: Fetch latest data and update MongoDB
+      env:
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        MONGODB_DATABASE: aqi_karachi
+        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+      run: |
+        echo "📊 Fetching data from APIs and updating MongoDB..."
+        python -m src.feature_pipeline
+        echo "✅ Feature pipeline execution completed"
+    
+    - name: Verify data update
+      env:
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      run: |
+        python << 'EOF'
+        import os
+        from pymongo import MongoClient
+        from datetime import datetime
+        
+        client = MongoClient(os.environ['MONGODB_URI'])
+        db = client['aqi_karachi']
+        collection = db['features']
+        
+        latest = collection.find_one(sort=[('datetime', -1)])
+        if latest:
+            print(f"✅ Latest record datetime: {latest['datetime']}")
+            print(f"📊 Total records in DB: {collection.count_documents({})}")
+        else:
+            print("⚠️ No records found")
+        
+        client.close()
+        EOF
+    
+    - name: Log completion
+      if: success()
+      run: |
+        echo "✅ Data collection completed successfully"
+        echo "⏰ Finished at: $(date -u) UTC"
+    
+    - name: Log failure
+      if: failure()
+      run: |
+        echo "❌ Data collection failed"
+        echo "⏰ Failed at: $(date -u) UTC"
+        echo "Please check the logs above for error details"

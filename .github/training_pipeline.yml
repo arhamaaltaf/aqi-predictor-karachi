@@ -1,0 +1,42 @@
+name: Daily Model Retraining
+
+on:
+  schedule:
+    # Run daily at 3 AM UTC (after full day of hourly data collection)
+    - cron: '0 3 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  retrain-model:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run training pipeline
+      env:
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        MONGODB_DATABASE: aqi_karachi
+        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+      run: |
+        python -m src.training_pipeline
+    
+    - name: Commit updated models
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add models/*.joblib
+        git diff --quiet && git diff --staged --quiet || git commit -m "Auto: Updated models from daily training"
+        git push
+      continue-on-error: true

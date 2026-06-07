@@ -1,0 +1,32 @@
+# Environment
+venv/
+.venv/
+env/
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Data files
+data/*.csv
+*.csv
+
+# Model files (joblib models ARE committed for deployment)
+models/*.pkl
+*.h5
+
+# OS
+.DS_Store
+Thumbs.db
