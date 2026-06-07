@@ -33,7 +33,7 @@ jobs:
     - name: Fetch latest data and update MongoDB
       env:
         MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        MONGODB_DATABASE: aqi_karachi
+        MONGODB_DATABASE: aqi_db
         OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
       run: |
         echo "📊 Fetching data from APIs and updating MongoDB..."
