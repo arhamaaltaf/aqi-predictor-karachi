@@ -27,6 +27,7 @@ def get_config(key, default=None):
 
 # MongoDB Configuration
 MONGODB_URI = get_config('MONGODB_URI')
+print(f"DEBUG: My URI is {MONGODB_URI}")
 MONGODB_DATABASE = get_config('MONGODB_DATABASE', 'aqi_karachi')
 
 # Location Configuration
