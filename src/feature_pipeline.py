@@ -10,7 +10,7 @@ Run:
 - Manually: python -m src.feature_pipeline
 - Automated: Via GitHub Actions every hour
 """
-
+from datetime import datetime, timedelta, timezone
 import requests
 import pandas as pd
 import numpy as np
@@ -74,7 +74,7 @@ class FeaturePipeline:
             return None
     
     def fetch_aqi_data(self, days=1):
-        """Fetch AQI data from OpenWeather API (matches training dataset source)"""
+        """Fetch AQI data from OpenWeather API"""
         print(f"💨 Fetching AQI data from OpenWeather for last {days} day(s)...")
         
         # Calculate time range
@@ -97,12 +97,19 @@ class FeaturePipeline:
             response.raise_for_status()
             data = response.json()
             
+            # Create a hardcoded PKT timezone object (UTC+5)
+            pkt_tz = timezone(timedelta(hours=5))
+            
             # Extract hourly records
             records = []
             for hour_data in data.get('list', []):
+                # Safely convert the Unix timestamp explicitly to Karachi time
+                dt_utc = datetime.fromtimestamp(hour_data['dt'], tz=timezone.utc)
+                dt_pkt = dt_utc.astimezone(pkt_tz)
+                
                 record = {
-                    'datetime': datetime.fromtimestamp(hour_data['dt']).strftime('%Y-%m-%dT%H:%M'),
-                    'aqi': hour_data['main']['aqi'],  # Direct AQI (1-5)
+                    'datetime': dt_pkt.strftime('%Y-%m-%dT%H:%M'),
+                    'aqi': hour_data['main']['aqi'],
                     'co': hour_data['components']['co'],
                     'no': hour_data['components'].get('no', 0),
                     'no2': hour_data['components']['no2'],
@@ -123,7 +130,7 @@ class FeaturePipeline:
         except Exception as e:
             print(f"   ❌ Error fetching AQI data from OpenWeather: {e}")
             return None
-    
+            
     # ========================================
     # FEATURE ENGINEERING
     # ========================================
