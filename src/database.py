@@ -25,7 +25,6 @@ class MongoDBHandler:
             MONGODB_URI,
             tlsCAFile=certifi.where()
         )
-        print(client.admin.command("ping"))
         self.db = self.client[MONGODB_DATABASE]
         
         # Collections
