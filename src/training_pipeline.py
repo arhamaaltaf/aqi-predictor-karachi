@@ -1,11 +1,11 @@
 """
-Training Pipeline for Karachi AQI Predictor
+Training Pipeline for Karachi AQI Predictor (Regression Version)
 
 This script:
 1. Loads features from MongoDB
 2. Prepares training data
-3. Trains multiple ML models
-4. Evaluates and selects best model
+3. Trains multiple ML regression models
+4. Evaluates and selects best model (lowest RMSE)
 5. Saves model and metadata
 
 Run:
@@ -20,17 +20,16 @@ import joblib
 import os
 
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from sklearn.preprocessing import StandardScaler
 
-# Classification Models
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
+# Regression Metrics & Models
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
 
 from src.database import MongoDBHandler
 from src.config import TARGET_VARIABLE, TRAIN_TEST_SPLIT, RANDOM_STATE, PREDICTION_HORIZON
-
 
 class TrainingPipeline:
     """Handle model training and evaluation"""
@@ -43,7 +42,7 @@ class TrainingPipeline:
         self.best_model = None
         self.best_model_name = None
         self.scaler = StandardScaler()
-        self.label_encoder = LabelEncoder()  # For converting AQI classes (2,3,4,5) to (0,1,2,3)
+        # Note: LabelEncoder removed for regression
     
     # ========================================
     # DATA PREPARATION
@@ -67,11 +66,11 @@ class TrainingPipeline:
         """
         Prepare data for training
         
-        Creates target variable: PM2.5 value N hours in the future
+        Creates target variable: Continuous AQI value N hours in the future
         """
         print(f"\n🎯 Preparing training data (predicting {PREDICTION_HORIZON}h ahead)...")
         
-        # Create target: PM2.5 value N hours in the future
+        # Create target: Continuous value N hours in the future
         df = df.sort_values('datetime').reset_index(drop=True)
         df['target'] = df[TARGET_VARIABLE].shift(-PREDICTION_HORIZON)
         
@@ -100,16 +99,12 @@ class TrainingPipeline:
         X = df_train[feature_cols]
         y = df_train['target']
         
-        # Encode labels for XGBoost (2,3,4,5 → 0,1,2,3)
-        y_encoded = self.label_encoder.fit_transform(y)
-        
         print(f"   Features: {len(feature_cols)}")
         print(f"   Target: {TARGET_VARIABLE} (shifted by {PREDICTION_HORIZON}h)")
-        print(f"   Classes: {self.label_encoder.classes_} → {list(range(len(self.label_encoder.classes_)))}")
         
-        return X, y_encoded, feature_cols
+        return X, y, feature_cols
     
-    def split_data(self, X, y, test_size=None, random_state=None, stratify=None):
+    def split_data(self, X, y, test_size=None, random_state=None):
         """Split data into train and test sets"""
         # Use provided parameters or defaults from config
         test_size = test_size if test_size is not None else TRAIN_TEST_SPLIT
@@ -117,12 +112,12 @@ class TrainingPipeline:
         
         print(f"\n📊 Splitting data (test size: {test_size*100}%)...")
         
+        # Note: stratify removed as it is not applicable for continuous regression targets
         X_train, X_test, y_train, y_test = train_test_split(
             X, y,
             test_size=test_size,
             random_state=random_state,
-            stratify=stratify,
-            shuffle=True if stratify is not None else False  # Shuffle if stratifying
+            shuffle=True
         )
         
         print(f"   Training samples: {len(X_train):,}")
@@ -140,74 +135,55 @@ class TrainingPipeline:
     # ========================================
     
     def define_models(self):
-        """Define all models to train"""
-        print("\n🤖 Defining classification models...")
+        """Define all regression models to train"""
+        print("\n🤖 Defining regression models...")
         
-        # ─────────────────────────────────────────────
-        #  RANDOM FOREST - CONSERVATIVE PARAMETERS
-        # ─────────────────────────────────────────────
         self.models = {
-            'RandomForest': RandomForestClassifier(
-                n_estimators=100,           # Moderate number of trees
-                max_depth=4,                # Reduced from 5 to prevent overfitting
-                min_samples_split=15,       # Increased from 10 (more conservative splits)
-                min_samples_leaf=5,         # Increased from 1 (require more samples per leaf)
-                max_features=0.5,           # Reduced from 0.7 (use 50% of features)
-                bootstrap=True,             # Changed to True (use bootstrap for variance reduction)
-                criterion='gini',           # Changed to gini (often more robust)
-                max_samples=0.8,            # Use 80% of data per tree
+            'RandomForest': RandomForestRegressor(
+                n_estimators=100,
+                max_depth=4,
+                min_samples_split=15,
+                min_samples_leaf=5,
+                max_features=0.5,
+                bootstrap=True,
+                max_samples=0.8,
                 random_state=RANDOM_STATE,
                 n_jobs=-1
             ),
             
-            # ─────────────────────────────────────────────
-            #  XGBOOST - CONSERVATIVE PARAMETERS
-            # ─────────────────────────────────────────────
-            'XGBoost': XGBClassifier(
-                n_estimators=200,           # Reduced from 500 to prevent overfitting
-                max_depth=4,                # HEAVILY reduced from 11 (was way too deep)
-                learning_rate=0.05,         # Keep slow learning rate
-                subsample=0.7,              # Reduced from 0.8 (use less data per tree)
-                colsample_bytree=0.6,       # Slightly increased from 0.5
-                min_child_weight=5,         # Increased from 1 (more samples per leaf)
-                gamma=0.2,                  # Increased from 0.1 (higher split threshold)
-                reg_alpha=1.0,              # Increased L1 regularization from 0.01
-                reg_lambda=3.0,             # Increased L2 regularization from 0.5
-                max_delta_step=0,           # Reset to 0 (default)
+            'XGBoost': XGBRegressor(
+                n_estimators=200,
+                max_depth=4,
+                learning_rate=0.05,
+                subsample=0.7,
+                colsample_bytree=0.6,
+                gamma=0.2,
+                reg_alpha=1.0,
+                reg_lambda=3.0,
                 random_state=RANDOM_STATE,
                 n_jobs=-1,
-                eval_metric='mlogloss'
+                eval_metric='rmse'
             ),
             
-            # ─────────────────────────────────────────────
-            #  LIGHTGBM - CONSERVATIVE PARAMETERS
-            # ─────────────────────────────────────────────
-            'LightGBM': LGBMClassifier(
-                n_estimators=200,           # Reduced from 500
-                max_depth=4,                # Slightly increased from 3 but conservative
-                learning_rate=0.1,         # Reduced from 0.1 (slower learning)
-                num_leaves=15,              # Heavily reduced from 63 (was too complex)
-                subsample= 0.8,              # Reduced from 0.9
-                colsample_bytree=0.8,       # Reduced from 1.0
-                reg_alpha= 0.5,              # Increased L1 from 0.001
-                reg_lambda= 1,             # Increased L2 from 0.01
-                min_child_samples=10,       # Increased from 20
-                # min_split_gain=0.0,         # Increased from 0.0 (require gain to split)
-                # max_bin= 511,                # Reduced from 511
-                # path_smooth=0.0,            # Reset to default
-                # extra_trees=True,          # Disabled (was True)
-                # class_weight='balanced',    # Keep balanced for imbalanced classes
+            'LightGBM': LGBMRegressor(
+                n_estimators=200,
+                max_depth=4,
+                learning_rate=0.1,
+                num_leaves=15,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=0.5,
+                reg_lambda=1,
+                min_child_samples=10,
                 random_state=RANDOM_STATE,
                 n_jobs=-1,
                 force_col_wise=True,
                 verbose=-1
             ),
-
         }
         
-        print(f"   ✅ Defined {len(self.models)} classification models")
+        print(f"   ✅ Defined {len(self.models)} regression models")
         print(f"   Models: {', '.join(self.models.keys())}")
-        print(f"   📝 Using conservative hyperparameters to prevent overfitting")
     
     def train_and_evaluate(self, X_train, X_test, y_train, y_test):
         """Train and evaluate all models"""
@@ -226,46 +202,43 @@ class TrainingPipeline:
                 y_train_pred = model.predict(X_train)
                 y_test_pred = model.predict(X_test)
                 
-                # Evaluate - Classification Metrics
-                train_accuracy = accuracy_score(y_train, y_train_pred)
-                test_accuracy = accuracy_score(y_test, y_test_pred)
-                test_precision = precision_score(y_test, y_test_pred, average='weighted', zero_division=0)
-                test_recall = recall_score(y_test, y_test_pred, average='weighted', zero_division=0)
-                test_f1 = f1_score(y_test, y_test_pred, average='weighted', zero_division=0)
+                # Evaluate - Regression Metrics
+                train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+                test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+                test_mae = mean_absolute_error(y_test, y_test_pred)
+                test_r2 = r2_score(y_test, y_test_pred)
                 
-                # Cross-validation (5-fold)
+                # Cross-validation (5-fold) using neg_root_mean_squared_error
                 cv_scores = cross_val_score(
                     model, X_train, y_train,
                     cv=5,
-                    scoring='accuracy',
+                    scoring='neg_root_mean_squared_error',
                     n_jobs=-1
                 )
-                cv_accuracy = cv_scores.mean()
+                cv_rmse = -cv_scores.mean()  # Convert back to positive RMSE
                 
                 # Store results
                 self.results[name] = {
                     'model': model,
-                    'train_accuracy': train_accuracy,
-                    'test_accuracy': test_accuracy,
-                    'test_precision': test_precision,
-                    'test_recall': test_recall,
-                    'test_f1': test_f1,
-                    'cv_accuracy': cv_accuracy,
+                    'train_rmse': train_rmse,
+                    'test_rmse': test_rmse,
+                    'test_mae': test_mae,
+                    'test_r2': test_r2,
+                    'cv_rmse': cv_rmse,
                     'predictions': y_test_pred
                 }
                 
-                print(f"   Train Accuracy: {train_accuracy:.3f}")
-                print(f"   Test Accuracy:  {test_accuracy:.3f}")
-                print(f"   Precision:      {test_precision:.3f}")
-                print(f"   Recall:         {test_recall:.3f}")
-                print(f"   F1 Score:       {test_f1:.3f}")
-                print(f"   CV Accuracy:    {cv_accuracy:.3f}")
+                print(f"   Train RMSE: {train_rmse:.3f}")
+                print(f"   Test RMSE:  {test_rmse:.3f}")
+                print(f"   Test MAE:   {test_mae:.3f}")
+                print(f"   Test R²:    {test_r2:.3f}")
+                print(f"   CV RMSE:    {cv_rmse:.3f}")
                 
             except Exception as e:
                 print(f"   ❌ Error training {name}: {e}")
     
     def select_best_model(self):
-        """Select best model based on test accuracy"""
+        """Select best model based on lowest test RMSE"""
         print("\n" + "="*60)
         print("🏆 MODEL COMPARISON")
         print("="*60)
@@ -275,27 +248,26 @@ class TrainingPipeline:
         for name, result in self.results.items():
             comparison.append({
                 'Model': name,
-                'Accuracy': result['test_accuracy'],
-                'Precision': result['test_precision'],
-                'Recall': result['test_recall'],
-                'F1 Score': result['test_f1'],
-                'CV Accuracy': result['cv_accuracy']
+                'RMSE': result['test_rmse'],
+                'MAE': result['test_mae'],
+                'R2 Score': result['test_r2'],
+                'CV RMSE': result['cv_rmse']
             })
         
         df_comparison = pd.DataFrame(comparison)
-        df_comparison = df_comparison.sort_values('Accuracy', ascending=False)
+        # Sort by RMSE ascending (lower is better)
+        df_comparison = df_comparison.sort_values('RMSE', ascending=True)
         
         print("\n" + df_comparison.to_string(index=False))
         
-        # Select best model (highest accuracy)
+        # Select best model (lowest RMSE)
         self.best_model_name = df_comparison.iloc[0]['Model']
         self.best_model = self.results[self.best_model_name]['model']
         
         print(f"\n🥇 Best Model: {self.best_model_name}")
-        print(f"   Accuracy:  {self.results[self.best_model_name]['test_accuracy']:.3f}")
-        print(f"   Precision: {self.results[self.best_model_name]['test_precision']:.3f}")
-        print(f"   Recall:    {self.results[self.best_model_name]['test_recall']:.3f}")
-        print(f"   F1 Score:  {self.results[self.best_model_name]['test_f1']:.3f}")
+        print(f"   RMSE:     {self.results[self.best_model_name]['test_rmse']:.3f}")
+        print(f"   MAE:      {self.results[self.best_model_name]['test_mae']:.3f}")
+        print(f"   R² Score: {self.results[self.best_model_name]['test_r2']:.3f}")
         
         return df_comparison
     
@@ -332,11 +304,6 @@ class TrainingPipeline:
         joblib.dump(self.scaler, scaler_path)
         print(f"   ✅ Scaler saved: {scaler_path}")
         
-        # Save label encoder (shared by all models)
-        label_encoder_path = 'models/label_encoder.joblib'
-        joblib.dump(self.label_encoder, label_encoder_path)
-        print(f"   ✅ Label encoder saved: {label_encoder_path}")
-        
         # Save feature columns (shared by all models)
         feature_path = 'models/feature_columns.joblib'
         joblib.dump(feature_cols, feature_path)
@@ -352,14 +319,13 @@ class TrainingPipeline:
             joblib.dump(result['model'], model_path)
             print(f"   ✅ {model_name} saved: {model_path}")
             
-            # Prepare metadata - Classification Metrics
+            # Prepare metadata - Regression Metrics
             metrics = {
-                'test_accuracy': float(result['test_accuracy']),
-                'train_accuracy': float(result['train_accuracy']),
-                'precision': float(result['test_precision']),
-                'recall': float(result['test_recall']),
-                'f1_score': float(result['test_f1']),
-                'cv_accuracy': float(result['cv_accuracy'])
+                'test_rmse': float(result['test_rmse']),
+                'train_rmse': float(result['train_rmse']),
+                'test_mae': float(result['test_mae']),
+                'test_r2': float(result['test_r2']),
+                'cv_rmse': float(result['cv_rmse'])
             }
             
             # Convert params to JSON-serializable format
@@ -412,8 +378,8 @@ class TrainingPipeline:
             # Prepare training data
             X, y, feature_cols = self.prepare_training_data(df)
             
-            # Split data
-            X_train, X_test, y_train, y_test = self.split_data(X, y, test_size=0.2, random_state=42, stratify=y)
+            # Split data (Note: stratify=y is removed here since y is continuous)
+            X_train, X_test, y_train, y_test = self.split_data(X, y, test_size=0.2, random_state=42)
             
             # Define models
             self.define_models()
@@ -442,7 +408,6 @@ class TrainingPipeline:
     def close(self):
         """Close database connection"""
         self.db.close()
-
 
 # ========================================
 # MAIN EXECUTION

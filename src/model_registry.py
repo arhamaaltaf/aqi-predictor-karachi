@@ -1,10 +1,10 @@
 """
-Model Registry for Karachi AQI Predictor
+Model Registry for Karachi AQI Predictor (Regression Version)
 
 This module:
 1. Manages multiple trained models
-2. Selects best model based on metrics
-3. Makes predictions for different time horizons (24h, 48h, 72h)
+2. Selects best model based on metrics (Lowest RMSE)
+3. Makes continuous predictions for different time horizons (24h, 48h, 72h)
 """
 
 import joblib
@@ -21,7 +21,6 @@ class ModelRegistry:
         """Initialize registry"""
         self.db = MongoDBHandler()
         self.scaler = None
-        self.label_encoder = None
         self.feature_columns = None
         self.models = {}
         self.model_metadata = {}
@@ -30,12 +29,11 @@ class ModelRegistry:
         self._load_shared_artifacts()
     
     def _load_shared_artifacts(self):
-        """Load scaler, label encoder, and feature columns"""
+        """Load scaler and feature columns (LabelEncoder removed for regression)"""
         try:
             self.scaler = joblib.load('models/scaler.joblib')
-            self.label_encoder = joblib.load('models/label_encoder.joblib')
             self.feature_columns = joblib.load('models/feature_columns.joblib')
-            print("✅ Loaded scaler, label encoder, and feature columns")
+            print("✅ Loaded scaler and feature columns")
         except Exception as e:
             print(f"⚠️  Warning: Could not load shared artifacts: {e}")
     
@@ -66,7 +64,8 @@ class ModelRegistry:
                 self.model_metadata[model_name] = metadata
                 
                 is_best = "🥇 BEST" if metadata.get('is_best', False) else ""
-                print(f"   ✅ {model_name:15} - Accuracy: {metadata['metrics']['test_accuracy']:.3f} {is_best}")
+                # Updated to use test_rmse
+                print(f"   ✅ {model_name:15} - RMSE: {metadata['metrics'].get('test_rmse', 0):.3f} {is_best}")
             except Exception as e:
                 print(f"   ❌ Failed to load {model_name}: {e}")
         
@@ -74,29 +73,29 @@ class ModelRegistry:
         return True
     
     def get_best_model(self):
-        """Get the best performing model"""
+        """Get the best performing model (Lowest RMSE)"""
         if not self.models:
             self.load_all_models()
         
         # Find best model from metadata
         best_model_name = None
-        best_accuracy = 0
+        best_rmse = float('inf')
         
         for model_name, metadata in self.model_metadata.items():
             if metadata.get('is_best', False):
                 best_model_name = model_name
                 break
             
-            # Fallback: use highest accuracy
-            accuracy = metadata['metrics']['test_accuracy']
-            if accuracy > best_accuracy:
-                best_accuracy = accuracy
+            # Fallback: use lowest RMSE
+            rmse = metadata['metrics'].get('test_rmse', float('inf'))
+            if rmse < best_rmse:
+                best_rmse = rmse
                 best_model_name = model_name
         
         if best_model_name:
             print(f"\n🥇 Best Model: {best_model_name}")
-            print(f"   Accuracy:  {self.model_metadata[best_model_name]['metrics']['test_accuracy']:.3f}")
-            print(f"   Precision: {self.model_metadata[best_model_name]['metrics']['precision']:.3f}")
+            print(f"   RMSE: {self.model_metadata[best_model_name]['metrics'].get('test_rmse', 0):.3f}")
+            print(f"   MAE:  {self.model_metadata[best_model_name]['metrics'].get('test_mae', 0):.3f}")
             return best_model_name, self.models[best_model_name]
         
         return None, None
@@ -118,20 +117,19 @@ class ModelRegistry:
             self.load_all_models()
         
         print("\n" + "="*60)
-        print("📊 MODEL REGISTRY")
+        print("📊 MODEL REGISTRY (Regression)")
         print("="*60)
         
-        # Sort by accuracy (highest first)
+        # Sort by RMSE (lowest first)
         sorted_models = sorted(
             self.model_metadata.items(),
-            key=lambda x: x[1]['metrics']['test_accuracy'],
-            reverse=True
+            key=lambda x: x[1]['metrics'].get('test_rmse', float('inf'))
         )
         
         for model_name, metadata in sorted_models:
             is_best = "🥇" if metadata.get('is_best', False) else "  "
             metrics = metadata['metrics']
-            print(f"{is_best} {model_name:15} | Accuracy: {metrics['test_accuracy']:.3f} | Precision: {metrics['precision']:.3f} | F1: {metrics['f1_score']:.3f}")
+            print(f"{is_best} {model_name:15} | RMSE: {metrics.get('test_rmse', 0):.3f} | MAE: {metrics.get('test_mae', 0):.3f} | R²: {metrics.get('test_r2', 0):.3f}")
         
         print("="*60)
     
@@ -159,7 +157,7 @@ class ModelRegistry:
         Returns: dict with predictions for each horizon
         """
         print("\n" + "="*60)
-        print("🔮 MULTI-HORIZON PREDICTIONS")
+        print("🔮 MULTI-HORIZON PREDICTIONS (Continuous)")
         print("="*60)
         
         # Get model to use
@@ -190,12 +188,13 @@ class ModelRegistry:
             input_72h_ago = df_latest.iloc[-72:-71]  # Data from 72h ago
             if not input_72h_ago.empty:
                 X_72h = self.prepare_input_features(input_72h_ago)
-                pred_24h_encoded = model.predict(X_72h)[0]
-                pred_24h = self.label_encoder.inverse_transform([pred_24h_encoded])[0]  # Decode to original AQI
+                
+                # Direct prediction (No LabelEncoder needed)
+                pred_24h = float(model.predict(X_72h)[0]) 
                 pred_time_24h = pd.to_datetime(input_72h_ago['datetime'].iloc[0]) + timedelta(hours=72)
                 
                 predictions['24h_ahead'] = {
-                    'prediction': float(pred_24h),
+                    'prediction': pred_24h,
                     'prediction_time': pred_time_24h,
                     'input_time': input_72h_ago['datetime'].iloc[0],
                     'description': 'Tomorrow AQI (using 3 days ago data)'
@@ -203,19 +202,20 @@ class ModelRegistry:
                 print(f"\n📍 24h Ahead (Tomorrow)")
                 print(f"   Input from: {input_72h_ago['datetime'].iloc[0]}")
                 print(f"   Predicting: {pred_time_24h}")
-                print(f"   AQI: {pred_24h:.1f}")
+                print(f"   Predicted AQI: {pred_24h:.1f}")
         
         # 2. Predict 48h ahead (using data from 48h ago)
         if len(df_latest) >= 48:
             input_48h_ago = df_latest.iloc[-48:-47]  # Data from 48h ago
             if not input_48h_ago.empty:
                 X_48h = self.prepare_input_features(input_48h_ago)
-                pred_48h_encoded = model.predict(X_48h)[0]
-                pred_48h = self.label_encoder.inverse_transform([pred_48h_encoded])[0]  # Decode to original AQI
+                
+                # Direct prediction
+                pred_48h = float(model.predict(X_48h)[0])
                 pred_time_48h = pd.to_datetime(input_48h_ago['datetime'].iloc[0]) + timedelta(hours=72)
                 
                 predictions['48h_ahead'] = {
-                    'prediction': float(pred_48h),
+                    'prediction': pred_48h,
                     'prediction_time': pred_time_48h,
                     'input_time': input_48h_ago['datetime'].iloc[0],
                     'description': 'Day after tomorrow AQI (using yesterday data)'
@@ -223,18 +223,19 @@ class ModelRegistry:
                 print(f"\n📍 48h Ahead (Day After Tomorrow)")
                 print(f"   Input from: {input_48h_ago['datetime'].iloc[0]}")
                 print(f"   Predicting: {pred_time_48h}")
-                print(f"   AQI: {pred_48h:.1f}")
+                print(f"   Predicted AQI: {pred_48h:.1f}")
         
         # 3. Predict 72h ahead (using current/latest data)
         input_current = df_latest.iloc[-1:]  # Latest data
         if not input_current.empty:
             X_current = self.prepare_input_features(input_current)
-            pred_72h_encoded = model.predict(X_current)[0]
-            pred_72h = self.label_encoder.inverse_transform([pred_72h_encoded])[0]  # Decode to original AQI
+            
+            # Direct prediction
+            pred_72h = float(model.predict(X_current)[0])
             pred_time_72h = pd.to_datetime(input_current['datetime'].iloc[0]) + timedelta(hours=72)
             
             predictions['72h_ahead'] = {
-                'prediction': float(pred_72h),
+                'prediction': pred_72h,
                 'prediction_time': pred_time_72h,
                 'input_time': input_current['datetime'].iloc[0],
                 'description': '3 days ahead AQI (using today data)'
@@ -242,7 +243,7 @@ class ModelRegistry:
             print(f"\n📍 72h Ahead (3 Days Later)")
             print(f"   Input from: {input_current['datetime'].iloc[0]}")
             print(f"   Predicting: {pred_time_72h}")
-            print(f"   AQI: {pred_72h:.1f}")
+            print(f"   Predicted AQI: {pred_72h:.1f}")
         
         print("\n" + "="*60)
         print(f"✅ Generated {len(predictions)} predictions using {model_name}")
@@ -257,7 +258,6 @@ class ModelRegistry:
     def close(self):
         """Close database connection"""
         self.db.close()
-
 
 # ========================================
 # MAIN EXECUTION
@@ -286,7 +286,7 @@ if __name__ == "__main__":
                 for horizon, pred_data in predictions.items():
                     if horizon not in ['model_used', 'model_metrics']:
                         print(f"\n{pred_data['description']}")
-                        print(f"   AQI: {pred_data['prediction']:.1f}")
+                        print(f"   Predicted AQI: {pred_data['prediction']:.1f}")
                         print(f"   Time: {pred_data['prediction_time']}")
     else:
         # Default: list models

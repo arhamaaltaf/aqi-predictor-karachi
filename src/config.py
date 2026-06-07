@@ -55,7 +55,7 @@ COLLECTION_PREDICTIONS = 'predictions'
 COLLECTION_MODELS = 'models'
 
 # Target variable
-TARGET_VARIABLE = 'aqi'
+TARGET_VARIABLE = 'pm2_5'
 
 # Features to use for training (we'll populate this after data analysis)
 FEATURE_COLUMNS = None  # Will be set dynamically
