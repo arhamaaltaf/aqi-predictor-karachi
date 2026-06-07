@@ -4,6 +4,8 @@ MongoDB Database Handler for Karachi AQI Predictor
 from pymongo import MongoClient
 from datetime import datetime
 import pandas as pd
+import certifi
+
 from src.config import MONGODB_URI, MONGODB_DATABASE
 from src.config import (
     COLLECTION_RAW_DATA, 
@@ -12,14 +14,13 @@ from src.config import (
     COLLECTION_MODELS
 )
 
-
 class MongoDBHandler:
     """Handle all MongoDB operations"""
     
     def __init__(self):
         """Initialize MongoDB connection"""
         print("🔌 Connecting to MongoDB...")
-        self.client = MongoClient(MONGODB_URI)
+        self.client = MongoClient(MONGODB_URI, tlsCAFile=certifi.where())
         self.db = self.client[MONGODB_DATABASE]
         
         # Collections

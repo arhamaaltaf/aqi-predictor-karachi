@@ -27,3 +27,4 @@ tqdm>=4.66.0
 
 # Model Interpretability
 shap>=0.44.0
+certifi
