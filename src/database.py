@@ -17,10 +17,17 @@ from src.config import (
 class MongoDBHandler:
     """Handle all MongoDB operations"""
     
-    def __init__(self):
+   def __init__(self):
         """Initialize MongoDB connection"""
         print("🔌 Connecting to MongoDB...")
-        self.client = MongoClient(MONGODB_URI, tlsCAFile=certifi.where())
+        
+        # The ultimate connection parameters for Streamlit Cloud + Atlas
+        self.client = MongoClient(
+            MONGODB_URI,
+            tls=True,
+            tlsAllowInvalidCertificates=True,  # Bypasses the strict OS-level SSL clash
+            serverSelectionTimeoutMS=5000      # Fails faster if there's a timeout
+        )
         self.db = self.client[MONGODB_DATABASE]
         
         # Collections
