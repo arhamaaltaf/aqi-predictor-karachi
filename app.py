@@ -114,9 +114,18 @@ st.markdown("""
         border-left: 4px solid #667eea;
     }
     
-    /* Sidebar Styling */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+    
+    /* Force sidebar text to be dark to contrast with the light background */
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] li,
+    [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] * {
+        color: #2c3e50 !important;
     }
     
     /* Button Styling */
