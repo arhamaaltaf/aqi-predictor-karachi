@@ -10,7 +10,7 @@ import streamlit as st
 
 try:
     client = MongoClient(
-        MONGO_URI,
+        MONGODB_URI,
         tlsCAFile=certifi.where(),
         serverSelectionTimeoutMS=5000
     )
