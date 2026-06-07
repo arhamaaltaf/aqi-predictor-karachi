@@ -22,14 +22,10 @@ class MongoDBHandler:
         print("🔌 Connecting to MongoDB...")
         
         # The ultimate connection parameters for Streamlit Cloud + Atlas
-        self.client = MongoClient(
+       self.client = MongoClient(
             MONGODB_URI,
-            tls=True,
-            tlsAllowInvalidCertificates=True,  # Bypasses the strict OS-level SSL clash
-            serverSelectionTimeoutMS=5000      # Fails faster if there's a timeout
+            tlsCAFile=certifi.where()
         )
-        
-
         self.db = self.client[MONGODB_DATABASE]
         
         # Collections
