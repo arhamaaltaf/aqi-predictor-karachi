@@ -6,20 +6,6 @@ from datetime import datetime
 from pymongo import MongoClient
 import certifi
 
-import streamlit as st
-
-try:
-    client = MongoClient(
-        MONGODB_URI,
-        tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=5000
-    )
-
-    result = client.admin.command("ping")
-    st.success(result)
-
-except Exception as e:
-    st.exception(e)
 
 from src.config import MONGODB_URI, MONGODB_DATABASE
 from src.config import (
