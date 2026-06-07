@@ -2,11 +2,11 @@
 
 Air Quality Index prediction system for Karachi using Machine Learning and MLOps practices.
 
-> 📄 **Complete Technical Documentation**: See [10Pearls_Internship.pdf](10Pearls_Internship.pdf) for comprehensive project report including challenges, learnings, and detailed analysis.
+> 📄 **Complete Technical Documentation**: See [Report-ArhamAltaf.pdf](Report-ArhamAltaf.pdf) for comprehensive project report including challenges, learnings, and detailed analysis.
 
 ## Project Overview
 
-This project predicts AQI category for Karachi, Pakistan for the next 72 hours using:
+This project predicts PM 2.5 for Karachi, Pakistan for the next 72 hours using:
 - Historical weather data (Open-Meteo API)
 - Historical air quality data (OpenWeather API)
 - Machine Learning models (Random Forest, XGBoost, LightGBM)
@@ -18,13 +18,13 @@ This project predicts AQI category for Karachi, Pakistan for the next 72 hours u
 ## Dataset
 
 - **Location**: Karachi, Pakistan (24.8608°N, 67.0104°E)
-- **Duration**: 79 days of historical data (Dec 1, 2025 - Feb 18, 2026)
+- **Duration**: 79 days of historical data 
 - **Frequency**: Hourly measurements
 - **Total Records**: 1,878 hourly data points (growing via automated collection)
 - **Features**: 30 engineered features including:
   - **Raw Weather** (5): temperature, humidity, wind_speed, wind_direction, cloud_cover
   - **Raw Pollutants** (8): PM2.5, PM10, CO, NO, NO₂, O₃, SO₂, NH₃ (all in µg/m³)
-  - **Target** (1): AQI category from OpenWeather API
+  - **Target** (1): PM2.5
   - **Time-based** (5): hour, day, month, day of week, cyclical encodings (sin/cos)
   - **Lag features** (3): AQI values at 24h, 48h, 72h ago (prevents data leakage)
   - **Rolling statistics** (6+): 72-hour window means and standard deviations
@@ -32,10 +32,11 @@ This project predicts AQI category for Karachi, Pakistan for the next 72 hours u
 
 ## Prediction Task
 
-- **Type**: Multi-class Classification
-- **Target**: AQI category (4 classes: 2, 3, 4, 5)
+- **Type**: Regression
+- **Target**: Raw PM2.5 concentration ($\mu g/m^3$)
+- **AQI Mapping**: Standard US EPA AQI formula (0–500 scale) applied post-prediction
 - **Prediction Horizon**: 72 hours ahead
-- **Validation**: Temporal split (no shuffle to prevent data leakage)
+- **Validation**: Stratified random shuffle (to address class imbalance in the underlying AQI distribution)
 
 ## Architecture
 
@@ -115,8 +116,8 @@ karachi-aqi-predictor/
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/karachi-aqi-predictor.git
-cd karachi-aqi-predictor
+git clone https://github.com/arhamaaltaf/aqi-predictor-karachi.git
+cd aqi-predictor-karachi
 ```
 
 ### 2. Create Virtual Environment
@@ -160,30 +161,6 @@ The app is deployed on **Streamlit Cloud**:
 - Connects to MongoDB Atlas
 - Auto-updates from GitHub commits
 - Uses secrets from Streamlit Cloud settings
-
-## Model Performance
-
-Current models trained on 1,800 samples (1,440 train / 360 test):
-
-| Model | Test Accuracy | Train Accuracy | CV Accuracy (5-fold) | Notes |
-|-------|---------------|----------------|---------------------|-------|
-| **LightGBM** | **93.9%** | 100.0% | **93.1%** | Best performer 🏆 |
-| **XGBoost** | 91.9% | 97.1% | 88.7% | Strong performance, slight overfitting |
-| **RandomForest** | 65.6% | 69.1% | 64.2% | Conservative, lower variance |
-
-**Model Registry**: 3 models in MongoDB with full metadata
-
-**Validation Strategy**: Stratified random split for balanced class representation
-
-**⚠️ Note on Accuracy**: These metrics use stratified random splitting. For realistic time-series validation (temporal split with no shuffle), expect lower performance as the model predicts truly unseen future data.
-
-## Model Registry
-
-The system maintains 3 trained models:
-
-1. **LightGBM** - Best performer (93.9% test accuracy) 🏆
-2. **XGBoost** - Strong second place (91.9% test accuracy)
-3. **RandomForest** - Conservative baseline (65.6% test accuracy)
 
 All models stored in:
 - **Local**: `models/` directory (`.joblib` files)
