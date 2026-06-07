@@ -1,9 +1,9 @@
 """
 MongoDB Database Handler for Karachi AQI Predictor
 """
-from pymongo import MongoClient
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
+from pymongo import MongoClient
 import certifi
 
 from src.config import MONGODB_URI, MONGODB_DATABASE
@@ -21,11 +21,11 @@ class MongoDBHandler:
         """Initialize MongoDB connection"""
         print("🔌 Connecting to MongoDB...")
         
-        # The ultimate connection parameters for Streamlit Cloud + Atlas
-       self.client = MongoClient(
+        self.client = MongoClient(
             MONGODB_URI,
             tlsCAFile=certifi.where()
         )
+        
         self.db = self.client[MONGODB_DATABASE]
         
         # Collections
