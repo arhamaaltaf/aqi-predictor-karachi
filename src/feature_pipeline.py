@@ -130,7 +130,7 @@ class FeaturePipeline:
         except Exception as e:
             print(f"   ❌ Error fetching AQI data from OpenWeather: {e}")
             return None
-            
+
     # ========================================
     # FEATURE ENGINEERING
     # ========================================
@@ -294,7 +294,7 @@ class FeaturePipeline:
                 if len(df_new_only) <= 5:
                     print(f"\n📋 Added records:")
                     for _, row in df_new_only.iterrows():
-                        print(f"   • {row['datetime']} - AQI: {row['aqi']}")
+                        print(f"   • {row['datetime']} - PM2.5: {row['pm2_5']:.1f} µg/m³")
             else:
                 print("\nℹ️  No new records to store. Database is up to date.")
             
